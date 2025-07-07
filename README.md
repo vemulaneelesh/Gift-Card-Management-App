@@ -26,24 +26,6 @@ Gift_Card_Management_App/
 └── README.md
 ```
 
-> **Note:**
-> The following are ignored and not tracked in version control: `card_images/`, `Makefile`, all database files (`*.db`), the `LICENSE` file, and the `tests/` directory.
-
-## .gitignore
-
-```
-__pycache__/
-*.pyc
-.env
-.DS_Store
-.vscode/
-card_images/
-Makefile
-*.db
-LICENSE
-tests/
-```
-
 ## Installation
 
 1. Install dependencies:
