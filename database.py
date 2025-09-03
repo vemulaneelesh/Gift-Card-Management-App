@@ -17,7 +17,6 @@ class DatabaseManager:
         CREATE TABLE IF NOT EXISTS cards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             card_number TEXT UNIQUE NOT NULL,
-            card_holder TEXT NOT NULL,
             balance REAL NOT NULL
         )
         """)
@@ -55,6 +54,8 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE cards ADD COLUMN payment_received REAL DEFAULT 0")
         if 'payment_mode' not in columns:
             cursor.execute("ALTER TABLE cards ADD COLUMN payment_mode TEXT")
+        if 'expected_percent' not in columns:
+            cursor.execute("ALTER TABLE cards ADD COLUMN expected_percent REAL")
         
         # Update existing records to have default values for new columns
         cursor.execute("UPDATE cards SET brand = 'Unknown' WHERE brand IS NULL")
@@ -83,14 +84,14 @@ class DatabaseManager:
             
             # Insert new card
             cursor.execute("""
-            INSERT INTO cards (card_number, card_holder, brand, pin, denomination, 
-                              purchase_price, expected_price, profit, source, card_image_path, purchase_date, 
+            INSERT INTO cards (card_number, brand, pin, denomination, 
+                              purchase_price, expected_price, expected_percent, profit, source, card_image_path, purchase_date, 
                               pending, sold_date, payment_received, payment_mode, balance) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                card_data['card_number'], card_data['card_holder'], card_data['brand'],
+                card_data['card_number'], card_data['brand'],
                 card_data['pin'], card_data['denomination'], card_data['purchase_price'],
-                card_data['expected_price'], card_data['profit'], card_data['source'],
+                card_data['expected_price'], card_data.get('expected_percent', None), card_data['profit'], card_data['source'],
                 card_data['card_image_path'], card_data['purchase_date'], card_data['pending'],
                 card_data['sold_date'], card_data['payment_received'], card_data['payment_mode'],
                 card_data['denomination']
@@ -113,8 +114,8 @@ class DatabaseManager:
             conn = sqlite3.connect(self.db_path, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute("""
-            SELECT card_number, card_holder, brand, pin, denomination, 
-                   purchase_price, expected_price, profit, source, purchase_date, 
+            SELECT card_number, brand, pin, denomination, 
+                   purchase_price, expected_price, expected_percent, profit, source, purchase_date, 
                    pending, sold_date, payment_received, payment_mode, card_image_path
             FROM cards ORDER BY created_at DESC
             """)
@@ -132,14 +133,14 @@ class DatabaseManager:
             conn = sqlite3.connect(self.db_path, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute("""
-            UPDATE cards SET card_holder = ?, brand = ?, pin = ?, denomination = ?,
-                            purchase_price = ?, expected_price = ?, profit = ?, 
+            UPDATE cards SET brand = ?, pin = ?, denomination = ?,
+                            purchase_price = ?, expected_price = ?, expected_percent = ?, profit = ?, 
                             source = ?, purchase_date = ?, pending = ?, sold_date = ?,
                             payment_received = ?, payment_mode = ?, card_image_path = ? WHERE card_number = ?
             """, (
-                card_data['card_holder'], card_data['brand'], card_data['pin'],
+                card_data['brand'], card_data['pin'],
                 card_data['denomination'], card_data['purchase_price'],
-                card_data['expected_price'], card_data['profit'], card_data['source'],
+                card_data['expected_price'], card_data.get('expected_percent', None), card_data['profit'], card_data['source'],
                 card_data['purchase_date'], card_data['pending'], card_data['sold_date'],
                 card_data['payment_received'], card_data['payment_mode'], 
                 card_data.get('card_image_path', ''), card_number
@@ -192,8 +193,8 @@ class DatabaseManager:
             conn = sqlite3.connect(self.db_path, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute("""
-            SELECT card_number, card_holder, brand, pin, denomination, 
-                   purchase_price, expected_price, profit, source, purchase_date, 
+            SELECT card_number, brand, pin, denomination, 
+                   purchase_price, expected_price, expected_percent, profit, source, purchase_date, 
                    card_image_path, pending, sold_date, payment_received, payment_mode
             FROM cards WHERE card_number = ?
             """, (card_number,))
@@ -202,12 +203,12 @@ class DatabaseManager:
             if row:
                 return {
                     'card_number': row[0],
-                    'card_holder': row[1],
-                    'brand': row[2],
-                    'pin': row[3],
-                    'denomination': row[4],
-                    'purchase_price': row[5],
-                    'expected_price': row[6],
+                    'brand': row[1],
+                    'pin': row[2],
+                    'denomination': row[3],
+                    'purchase_price': row[4],
+                    'expected_price': row[5],
+                    'expected_percent': row[6],
                     'profit': row[7],
                     'source': row[8],
                     'purchase_date': row[9],

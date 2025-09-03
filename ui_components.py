@@ -27,12 +27,29 @@ class AddCardTab:
         # Add widgets to form layout
         form_layout.addRow(QLabel("<b>Add New Gift Card</b>"))
         form_layout.addRow("Card Number:", self.card_number_input)
-        form_layout.addRow("Card Holder:", self.card_holder_input)
         form_layout.addRow("Brand:", self.brand_input)
         form_layout.addRow("PIN:", self.pin_input)
         form_layout.addRow("Denomination:", self.denomination_input)
         form_layout.addRow("Purchase Price:", self.purchase_price_input)
-        form_layout.addRow("Expected Price:", self.expected_price_input)
+        # Add toggle for expected price input mode
+        self.expected_price_mode = QComboBox()
+        self.expected_price_mode.addItems(["Amount ($)", "Percent (%)"])
+        self.expected_price_mode.setCurrentIndex(0)
+        self.expected_price_mode.currentIndexChanged.connect(self.on_expected_price_mode_changed)
+        # Add both widgets to the form
+        expected_price_row = QHBoxLayout()
+        expected_price_row.addWidget(self.expected_price_input)
+        expected_price_row.addWidget(self.expected_price_mode)
+        form_layout.addRow("Expected Price:", expected_price_row)
+        # Add percent input (hidden by default)
+        self.expected_percent_input = QDoubleSpinBox()
+        self.expected_percent_input.setRange(0, 100)
+        self.expected_percent_input.setSuffix("%")
+        self.expected_percent_input.setDecimals(2)
+        self.expected_percent_input.setVisible(False)
+        expected_price_row.addWidget(self.expected_percent_input)
+        self.expected_percent_input.valueChanged.connect(self.on_expected_percent_changed)
+        self.expected_price_input.valueChanged.connect(self.on_expected_price_changed)
         form_layout.addRow("Profit:", self.profit_label)
         form_layout.addRow("Source:", self.source_input)
         form_layout.addRow("Purchase Date:", self.purchase_date_input)
@@ -64,9 +81,6 @@ class AddCardTab:
         """Create all input fields"""
         self.card_number_input = QLineEdit()
         self.card_number_input.setPlaceholderText("Enter Card Number")
-        
-        self.card_holder_input = QLineEdit()
-        self.card_holder_input.setPlaceholderText("Enter Card Holder Name")
         
         self.brand_input = QLineEdit()
         self.brand_input.setPlaceholderText("e.g., Amazon, Walmart, Target")
@@ -213,26 +227,27 @@ class AddCardTab:
     
     def get_form_data(self):
         """Get all form data as a dictionary"""
-        return {
+        data = {
             'card_number': self.card_number_input.text().strip(),
-            'card_holder': self.card_holder_input.text().strip(),
             'brand': self.brand_input.text().strip(),
             'pin': self.pin_input.text().strip(),
             'denomination': self.denomination_input.value(),
             'purchase_price': self.purchase_price_input.value(),
             'expected_price': self.expected_price_input.value(),
+            'expected_percent': self.expected_percent_input.value(),
             'source': self.source_input.currentText(),
             'purchase_date': self.purchase_date_input.date().toString("yyyy-MM-dd"),
             'pending': self.pending_input.currentText(),
             'sold_date': self.sold_date_input.date().toString("yyyy-MM-dd") if self.pending_input.currentText() == "No" else "",
             'payment_received': self.payment_received_input.value() if self.pending_input.currentText() == "No" else 0.0,
-            'payment_mode': self.payment_mode_input.currentText() if self.pending_input.currentText() == "No" else ""
+            'payment_mode': self.payment_mode_input.currentText() if self.pending_input.currentText() == "No" else "",
+            'card_image_path': self.image_path_label.text() if self.image_path_label.text() != "No image selected" else self.card_data.get('card_image_path', '')
         }
+        return data
     
     def clear_form(self):
         """Clear all form fields"""
         self.card_number_input.clear()
-        self.card_holder_input.clear()
         self.brand_input.clear()
         self.pin_input.clear()
         self.denomination_input.setValue(0)
@@ -272,6 +287,33 @@ class AddCardTab:
         else:
             self.profit_label.setStyleSheet("font-weight: bold; color: red; font-size: 14px;")
 
+    def on_expected_price_mode_changed(self, idx):
+        if idx == 0:  # Amount
+            self.expected_price_input.setVisible(True)
+            self.expected_percent_input.setVisible(False)
+            # Update expected price from percent if needed
+            if self.expected_percent_input.value() > 0:
+                purchase_price = self.purchase_price_input.value()
+                percent = self.expected_percent_input.value()
+                self.expected_price_input.setValue(purchase_price * percent / 100)
+        else:  # Percent
+            self.expected_price_input.setVisible(False)
+            self.expected_percent_input.setVisible(True)
+            # Update percent from expected price if needed
+            if self.expected_price_input.value() > 0 and self.purchase_price_input.value() > 0:
+                percent = (self.expected_price_input.value() / self.purchase_price_input.value()) * 100
+                self.expected_percent_input.setValue(percent)
+    def on_expected_percent_changed(self, value):
+        if self.expected_price_mode.currentIndex() == 1:  # Percent mode
+            purchase_price = self.purchase_price_input.value()
+            self.expected_price_input.setValue(purchase_price * value / 100)
+            self.update_profit()
+    def on_expected_price_changed(self, value):
+        if self.expected_price_mode.currentIndex() == 0 and self.purchase_price_input.value() > 0:
+            percent = (value / self.purchase_price_input.value()) * 100
+            self.expected_percent_input.setValue(percent)
+            self.update_profit()
+
 class EditCardDialog(QDialog):
     """Dialog for editing an existing card"""
     
@@ -300,10 +342,6 @@ class EditCardDialog(QDialog):
         self.card_number_input.setStyleSheet("background-color: #f8f9fa; color: #6c757d;")
         form_layout.addRow("Card Number:", self.card_number_input)
         
-        # Card Holder
-        self.card_holder_input = QLineEdit()
-        form_layout.addRow("Card Holder:", self.card_holder_input)
-        
         # Brand
         self.brand_input = QLineEdit()
         form_layout.addRow("Brand:", self.brand_input)
@@ -329,11 +367,25 @@ class EditCardDialog(QDialog):
         self.expected_price_input = QDoubleSpinBox()
         self.expected_price_input.setMaximum(999999.99)
         self.expected_price_input.setPrefix("$")
-        form_layout.addRow("Expected Price:", self.expected_price_input)
-        
-        # Profit (read-only)
-        self.profit_label = QLabel("$0.00")
-        self.profit_label.setStyleSheet("font-weight: bold; color: green; font-size: 14px;")
+        # Add toggle for expected price input mode
+        self.expected_price_mode = QComboBox()
+        self.expected_price_mode.addItems(["Amount ($)", "Percent (%)"])
+        self.expected_price_mode.setCurrentIndex(0)
+        self.expected_price_mode.currentIndexChanged.connect(self.on_expected_price_mode_changed)
+        # Add both widgets to the form
+        expected_price_row = QHBoxLayout()
+        expected_price_row.addWidget(self.expected_price_input)
+        expected_price_row.addWidget(self.expected_price_mode)
+        form_layout.addRow("Expected Price:", expected_price_row)
+        # Add percent input (hidden by default)
+        self.expected_percent_input = QDoubleSpinBox()
+        self.expected_percent_input.setRange(0, 100)
+        self.expected_percent_input.setSuffix("%")
+        self.expected_percent_input.setDecimals(2)
+        self.expected_percent_input.setVisible(False)
+        expected_price_row.addWidget(self.expected_percent_input)
+        self.expected_percent_input.valueChanged.connect(self.on_expected_percent_changed)
+        self.expected_price_input.valueChanged.connect(self.on_expected_price_changed)
         form_layout.addRow("Profit:", self.profit_label)
         
         # Source
@@ -436,7 +488,6 @@ class EditCardDialog(QDialog):
     def populate_form(self):
         """Populate form with existing card data"""
         self.card_number_input.setText(self.card_data.get('card_number', ''))
-        self.card_holder_input.setText(self.card_data.get('card_holder', ''))
         self.brand_input.setText(self.card_data.get('brand', ''))
         self.pin_input.setText(self.card_data.get('pin', ''))
         self.denomination_input.setValue(float(self.card_data.get('denomination', 0)))
@@ -557,14 +608,14 @@ class EditCardDialog(QDialog):
     
     def get_form_data(self):
         """Get all form data as a dictionary"""
-        return {
+        data = {
             'card_number': self.card_number_input.text().strip(),
-            'card_holder': self.card_holder_input.text().strip(),
             'brand': self.brand_input.text().strip(),
             'pin': self.pin_input.text().strip(),
             'denomination': self.denomination_input.value(),
             'purchase_price': self.purchase_price_input.value(),
             'expected_price': self.expected_price_input.value(),
+            'expected_percent': self.expected_percent_input.value(),
             'source': self.source_input.currentText(),
             'purchase_date': self.purchase_date_input.date().toString("yyyy-MM-dd"),
             'pending': self.pending_input.currentText(),
@@ -573,6 +624,7 @@ class EditCardDialog(QDialog):
             'payment_mode': self.payment_mode_input.currentText() if self.pending_input.currentText() == "No" else "",
             'card_image_path': self.image_path_label.text() if self.image_path_label.text() != "No image selected" else self.card_data.get('card_image_path', '')
         }
+        return data
     
     def on_pending_changed(self, value):
         """Handle pending status change - show/hide sold fields"""
@@ -640,17 +692,16 @@ class ViewCardsTab:
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(16)  # Added one more column for Edit button
+        self.table.setColumnCount(15)  # Reduced by one column
         self.table.setHorizontalHeaderLabels([
-            "Card Number", "Card Holder", "Brand", "PIN", "Denomination", 
+            "Card Number", "Brand", "PIN", "Denomination", 
             "Purchase Price", "Expected Price", "Profit", "Source", "Purchase Date", 
             "Pending", "Sold Date", "Payment Received", "Payment Mode", "Image", "Actions"
         ])
         
         # Set column widths for better display
         column_widths = [
-            120,  # Card Number
-            100,  # Card Holder
+            180,  # Card Number (increased for better cross-platform appearance)
             80,   # Brand
             60,   # PIN
             90,   # Denomination
@@ -726,15 +777,15 @@ class ViewCardsTab:
             self.table.insertRow(row_number)
             for column_number, data in enumerate(row_data):
                 try:
-                    if column_number == 3:  # PIN column
+                    if column_number == 2:  # PIN column (was 3)
                         display_text = "*" * len(str(data)) if data else ""
                         item = QTableWidgetItem(display_text)
-                    elif column_number in [4, 5, 6, 7, 12]:  # Money columns (including Payment Received)
+                    elif column_number in [3, 4, 5, 6, 11]:  # Money columns (shifted indices)
                         if data is not None:
                             item = QTableWidgetItem(f"${float(data):.2f}")
                         else:
                             item = QTableWidgetItem("$0.00")
-                    elif column_number == 14:  # Image column
+                    elif column_number == 13:  # Image column (was 14)
                         item = QTableWidgetItem("Yes" if data else "No")
                     else:
                         item = QTableWidgetItem(str(data) if data is not None else "")
@@ -782,7 +833,7 @@ class ViewCardsTab:
                 }
             """)
             edit_button.clicked.connect(lambda checked, row=row_number: self.edit_card(row))
-            self.table.setCellWidget(row_number, 15, edit_button)
+            self.table.setCellWidget(row_number, 14, edit_button) # Adjusted column index
     
     def get_table_data(self):
         """Get all data from the table"""
@@ -814,20 +865,19 @@ class ViewCardsTab:
         # Get card data from the row
         card_data = {}
         card_data['card_number'] = self.table.item(row, 0).text()
-        card_data['card_holder'] = self.table.item(row, 1).text()
-        card_data['brand'] = self.table.item(row, 2).text()
-        card_data['pin'] = self.table.item(row, 3).text()  # This will be masked, need to get from database
-        card_data['denomination'] = safe_float(self.table.item(row, 4))
-        card_data['purchase_price'] = safe_float(self.table.item(row, 5))
-        card_data['expected_price'] = safe_float(self.table.item(row, 6))
+        card_data['brand'] = self.table.item(row, 1).text()
+        card_data['pin'] = self.table.item(row, 2).text()  # This will be masked, need to get from database
+        card_data['denomination'] = safe_float(self.table.item(row, 3))
+        card_data['purchase_price'] = safe_float(self.table.item(row, 4))
+        card_data['expected_price'] = safe_float(self.table.item(row, 5))
         card_data['profit'] = card_data['expected_price'] - card_data['purchase_price']
-        card_data['source'] = self.table.item(row, 8).text()
-        card_data['purchase_date'] = self.table.item(row, 9).text()
-        card_data['pending'] = self.table.item(row, 10).text()
-        card_data['sold_date'] = self.table.item(row, 11).text()
-        card_data['payment_received'] = safe_float(self.table.item(row, 12))
-        card_data['payment_mode'] = self.table.item(row, 13).text()
-        card_data['card_image_path'] = self.table.item(row, 14).text()  # This will be "Yes" or "No", need to get actual path
+        card_data['source'] = self.table.item(row, 7).text()
+        card_data['purchase_date'] = self.table.item(row, 8).text()
+        card_data['pending'] = self.table.item(row, 9).text()
+        card_data['sold_date'] = self.table.item(row, 10).text()
+        card_data['payment_received'] = safe_float(self.table.item(row, 11))
+        card_data['payment_mode'] = self.table.item(row, 12).text()
+        card_data['card_image_path'] = self.table.item(row, 13).text()  # This will be "Yes" or "No", need to get actual path
         
         # Get the actual card data from database (including PIN and image path)
         if hasattr(self.parent, 'db_manager'):
@@ -844,7 +894,7 @@ class ViewCardsTab:
                 # Ensure profit is recalculated
                 updated_data['profit'] = updated_data['expected_price'] - updated_data['purchase_price']
                 # Ensure all required fields are present
-                for key in ['card_holder','brand','pin','denomination','purchase_price','expected_price','profit','source','purchase_date','pending','sold_date','payment_received','payment_mode','card_image_path']:
+                for key in ['brand','pin','denomination','purchase_price','expected_price','profit','source','purchase_date','pending','sold_date','payment_received','payment_mode','card_image_path']:
                     if key not in updated_data:
                         updated_data[key] = ''
                 # Update the card in database
