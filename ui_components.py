@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QMessageBox, QDialog
 )
 from PyQt6.QtCore import Qt, QDate
-from PyQt6.QtGui import QPixmap, QColor
+from PyQt6.QtGui import QPixmap, QColor, QGuiApplication
 import os
 
 class AddCardTab:
@@ -241,7 +241,7 @@ class AddCardTab:
             'sold_date': self.sold_date_input.date().toString("yyyy-MM-dd") if self.pending_input.currentText() == "No" else "",
             'payment_received': self.payment_received_input.value() if self.pending_input.currentText() == "No" else 0.0,
             'payment_mode': self.payment_mode_input.currentText() if self.pending_input.currentText() == "No" else "",
-            'card_image_path': self.image_path_label.text() if self.image_path_label.text() != "No image selected" else self.card_data.get('card_image_path', '')
+            'card_image_path': self.image_path_label.text() if self.image_path_label.text() != "No image selected" else ""
         }
         return data
     
@@ -653,10 +653,14 @@ class EditCardDialog(QDialog):
         else:
             self.profit_label.setStyleSheet("font-weight: bold; color: red; font-size: 14px;")
 
-class ViewCardsTab:
+class ViewCardsTab(QWidget):
     def __init__(self, parent):
+        super().__init__(parent)
         self.parent = parent
         self.setup_ui()
+        self.table.installEventFilter(self)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
     
     def setup_ui(self):
         """Setup the View Cards tab UI"""
@@ -907,3 +911,44 @@ class ViewCardsTab:
                         QMessageBox.information(self.parent, "Success", "Card updated successfully!")
                     else:
                         QMessageBox.warning(self.parent, "Error", "Failed to update card!") 
+
+    def show_context_menu(self, pos):
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu()
+        copy_action = menu.addAction("Copy Selected Row(s)")
+        action = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if action == copy_action:
+            self.copy_selected_rows_to_clipboard()
+
+    def eventFilter(self, source, event):
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtGui import QKeySequence, QGuiApplication
+        if source == self.table and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            modifiers = event.modifiers()
+            # Ctrl+C or Cmd+C
+            if (key == 67 and (modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier))):
+                self.copy_selected_rows_to_clipboard()
+                return True
+        return super().eventFilter(source, event)
+    def copy_selected_rows_to_clipboard(self):
+        selected_ranges = self.table.selectedRanges()
+        if not selected_ranges:
+            return
+        rows = set()
+        for rng in selected_ranges:
+            for row in range(rng.topRow(), rng.bottomRow() + 1):
+                rows.add(row)
+        rows = sorted(rows)
+        data = []
+        for row in rows:
+            row_data = []
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item:
+                    row_data.append(item.text())
+                else:
+                    row_data.append("")
+            data.append("\t".join(row_data))
+        clipboard = QGuiApplication.clipboard()
+        clipboard.setText("\n".join(data)) 

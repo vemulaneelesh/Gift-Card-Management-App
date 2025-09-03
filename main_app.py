@@ -88,8 +88,8 @@ class GiftCardApp(QMainWindow):
         card_data = self.add_tab.get_form_data()
         
         # Input validation
-        if not card_data['card_number'] or not card_data['card_holder'] or not card_data['brand']:
-            QMessageBox.warning(self, "Input Error", "Card Number, Card Holder, and Brand are required!")
+        if not card_data['card_number'] or not card_data['brand']:
+            QMessageBox.warning(self, "Input Error", "Card Number and Brand are required!")
             return
         
         if card_data['denomination'] <= 0 or card_data['purchase_price'] <= 0 or card_data['expected_price'] <= 0:
@@ -99,9 +99,11 @@ class GiftCardApp(QMainWindow):
         # Calculate profit
         card_data['profit'] = card_data['expected_price'] - card_data['purchase_price']
         
-        # Handle image upload
+        # Handle image upload (optional)
+        card_data['card_image_path'] = ""
         try:
-            card_data['card_image_path'] = self.image_handler.save_image(card_data['card_number'])
+            if self.add_tab.image_path_label.text() != "No image selected":
+                card_data['card_image_path'] = self.image_handler.save_image(card_data['card_number'])
         except Exception as e:
             QMessageBox.warning(self, "Image Error", f"Failed to save image: {str(e)}")
             card_data['card_image_path'] = ""
